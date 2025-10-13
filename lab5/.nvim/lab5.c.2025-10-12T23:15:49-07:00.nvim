@@ -1,0 +1,72 @@
+// lab5.c 
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+struct header {
+  uint64_t size;
+  struct header *next;
+  int id;
+};
+
+static void initialize_block(struct header *b, uint64_t s, struct header *n, int id){
+  b->size = s; b->next = n; b->id = id;
+}
+
+int find_first_fit(struct header *p, uint64_t need){
+  for (; p; p = p->next) if (p->size >= need) return p->id;
+  return -1;
+}
+
+int find_best_fit(struct header *p, uint64_t need){
+  int best_id = -1; uint64_t best_sz = UINT64_MAX;
+  for (; p; p = p->next)
+    if (p->size >= need && p->size < best_sz) { best_sz = p->size; best_id = p->id; }
+  return best_id;
+}
+
+int find_worst_fit(struct header *p, uint64_t need){
+  int worst_id = -1; uint64_t worst_sz = 0;
+  for (; p; p = p->next)
+    if (p->size >= need && p->size > worst_sz) { worst_sz = p->size; worst_id = p->id; }
+  return worst_id;
+}
+
+int main(void){
+  struct header *b1 = malloc(sizeof *b1);
+  struct header *b2 = malloc(sizeof *b2);
+  struct header *b3 = malloc(sizeof *b3);
+  struct header *b4 = malloc(sizeof *b4);
+  struct header *b5 = malloc(sizeof *b5);
+
+  initialize_block(b1, 6,  b2, 1);
+  initialize_block(b2, 12, b3, 2);
+  initialize_block(b3, 24, b4, 3);
+  initialize_block(b4, 8,  b5, 4);
+  initialize_block(b5, 4,  NULL, 5);
+
+  struct header *free_list = b1;
+  uint64_t req = 7;
+
+  printf("The ID for First-Fit algorithm is: %d\n",  find_first_fit (free_list, req));
+  printf("The ID for Best-Fit algorithm is: %d\n",   find_best_fit  (free_list, req));
+  printf("The ID for Worst-Fit algorithm is: %d\n",  find_worst_fit (free_list, req));
+
+  free(b1); free(b2); free(b3); free(b4); free(b5);
+  return 0;
+}
+
+/*
+Coalescing (single newly freed block F into an already-coalesced, address-sorted free list):
+
+- Let end(X) = addr(X) + sizeof(header) + X.size.
+- Insert F into the free list by address (prev < F < cur).
+- Merge with next if touching: if cur && end(F) == addr(cur):
+      F.size += sizeof(header) + cur.size; F.next = cur.next; cur = F.next;
+- Merge with prev if touching: if prev && end(prev) == addr(F):
+      prev.size += sizeof(header) + F.size; prev.next = F.next; F = prev;
+- Return (possibly new) head.
+
+This handles: before-only, after-only, or both-sides merges.
+*/
+
