@@ -1,0 +1,150 @@
+// lab5.c
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+struct header {
+  uint64_t size;       // size of the free payload (bytes)
+  struct header *next; // next free block in the list
+  int id;              // block identifier (for display/testing)
+};
+
+static void initialize_block(struct header *block, uint64_t size,
+                             struct header *next, int id) {
+  block->size = size;
+  block->next = next;
+  block->id = id;
+}
+
+/* First-fit: return the id of the first block whose size >= requested size */
+int find_first_fit(struct header *free_list_ptr, uint64_t size) {
+  for (struct header *cur = free_list_ptr; cur != NULL; cur = cur->next) {
+    if (cur->size >= size)
+      return cur->id;
+  }
+  return -1; // not found
+}
+
+/* Best-fit: return the id of the smallest block that still fits (>= size) */
+int find_best_fit(struct header *free_list_ptr, uint64_t size) {
+  int best_fit_id = -1;
+  uint64_t best_fit_size = UINT64_MAX;
+
+  for (struct header *cur = free_list_ptr; cur != NULL; cur = cur->next) {
+    if (cur->size >= size && cur->size < best_fit_size) {
+      best_fit_size = cur->size;
+      best_fit_id = cur->id;
+    }
+  }
+  return best_fit_id; // -1 if none fits
+}
+
+/* Worst-fit: return the id of the largest block that still fits (>= size) */
+int find_worst_fit(struct header *free_list_ptr, uint64_t size) {
+  int worst_fit_id = -1;
+  uint64_t worst_fit_size = 0;
+
+  for (struct header *cur = free_list_ptr; cur != NULL; cur = cur->next) {
+    if (cur->size >= size && cur->size > worst_fit_size) {
+      worst_fit_size = cur->size;
+      worst_fit_id = cur->id;
+    }
+  }
+  return worst_fit_id; // -1 if none fits
+}
+
+int main(void) {
+  struct header *free_block1 = (struct header *)malloc(sizeof(struct header));
+  struct header *free_block2 = (struct header *)malloc(sizeof(struct header));
+  struct header *free_block3 = (struct header *)malloc(sizeof(struct header));
+  struct header *free_block4 = (struct header *)malloc(sizeof(struct header));
+  struct header *free_block5 = (struct header *)malloc(sizeof(struct header));
+
+  if (!free_block1 || !free_block2 || !free_block3 || !free_block4 ||
+      !free_block5) {
+    fprintf(stderr, "malloc failed\n");
+    return 1;
+  }
+
+  // Free list: sizes [6, 12, 24, 8, 4] with IDs [1..5]
+  initialize_block(free_block1, 6, free_block2, 1);
+  initialize_block(free_block2, 12, free_block3, 2);
+  initialize_block(free_block3, 24, free_block4, 3);
+  initialize_block(free_block4, 8, free_block5, 4);
+  initialize_block(free_block5, 4, NULL, 5);
+
+  struct header *free_list_ptr = free_block1;
+
+  uint64_t request = 7;
+  int first_fit_id = find_first_fit(free_list_ptr, request);
+  int best_fit_id = find_best_fit(free_list_ptr, request);
+  int worst_fit_id = find_worst_fit(free_list_ptr, request);
+
+  printf("The ID for First-Fit algorithm is: %d\n", first_fit_id);
+  printf("The ID for Best-Fit algorithm is: %d\n", best_fit_id);
+  printf("The ID for Worst-Fit algorithm is: %d\n", worst_fit_id);
+
+  free(free_block1);
+  free(free_block2);
+  free(free_block3);
+  free(free_block4);
+  free(free_block5);
+  return 0;
+}
+
+/*
+Part 2 — PSEUDOCODE: Coalescing a Single Newly Freed Block into a Coalesced Free
+List
+
+Assumptions:
+- The existing free list is already coalesced (no adjacent free blocks remain
+separate).
+- Blocks are linked in ascending address order.
+- header.size is the payload size (not including the header).
+- "addr(x)" gives the starting address of header x.
+- "end_of(x)" = addr(x) + sizeof(header) + x.size
+- Contiguity means end_of(A) == addr(B).
+
+Algorithm (merge a single newly freed block F):
+
+function coalesce_into_free_list(free_list_head, F):
+  if free_list_head == NULL:
+      F.next = NULL
+      return F
+
+  // 1) Find insertion point by address (keep list sorted by address)
+  prev = NULL
+  cur  = free_list_head
+  while cur != NULL and addr(cur) < addr(F):
+      prev = cur
+      cur  = cur.next
+
+  // Insert F between prev and cur
+  F.next = cur
+  if prev != NULL:
+      prev.next = F
+  else:
+      free_list_head = F
+
+  // 2) Try merge with NEXT neighbor (F with cur)
+  if cur != NULL and end_of(F) == addr(cur):
+      F.size = F.size + sizeof(header) + cur.size
+      F.next = cur.next
+      cur = F.next    // after merge, cur advances
+
+  // 3) Try merge with PREV neighbor (prev with F)
+  // prev may be NULL if F became new head
+  if prev != NULL and end_of(prev) == addr(F):
+      prev.size = prev.size + sizeof(header) + F.size
+      prev.next = F.next
+      F = prev     // final merged block is in 'prev'
+
+  return free_list_head
+
+Notes:
+- Doing NEXT merge before PREV merge is fine; after the NEXT merge, the check
+  with PREV still works (end_of(prev) may now match F's new end).
+- If both sides are contiguous, this collapses three blocks into one.
+- Keeping the list sorted by address is what makes “contiguous neighbor” checks
+constant time.
+*/
